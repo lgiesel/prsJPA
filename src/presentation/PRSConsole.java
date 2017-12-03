@@ -43,7 +43,6 @@ public class PRSConsole {
 		displayPreLoginMenu();
 
 		String choice = "y";
-		int prCounter = 0;
 		isLoggedIn = false; 
 
 		loadStatusMaps();
@@ -84,7 +83,7 @@ public class PRSConsole {
 				displayReviewPurchaseRequests();					
 				
 			} else if (menuOption.equalsIgnoreCase("newpr")) {
-				generateNewPR(prCounter);
+				generateNewPR();
 				
 			} else if (menuOption.equalsIgnoreCase("adduser")) {
 				addUser();
@@ -204,36 +203,53 @@ public class PRSConsole {
 		}
 	}
 	
-	public static void generateNewPR(int countPR) {
-		countPR ++;
-		createPurchRequest();	
-		displayProductList();
-		String choice = Console.getString("\nEnter line item? (y/n):\t","y","n");	
+	public static void generateNewPR() {
 		boolean success = false;
-		ArrayList<PurchaseRequestLineItem> lineItemAL = new ArrayList<>();
-		while (choice.equalsIgnoreCase("y")) {			
-			int productID = Console.getInt("Enter product nbr from product list:\t", 1, prodDB.getProducts().size());
-			int qty = Console.getInt("Enter quantity:\t");  			
-			PurchaseRequestLineItem li = new PurchaseRequestLineItem (); 				
-			li.setPurchaseRequestID(currentPR.getId());
-			li.setProductID(productID);
-			li.setQuantity(qty);
-			li.setupdatedByUser(currentUser.getId());
-			lineItemAL.add(li);
-			currentPR.setPrli(lineItemAL);
-			double liTotal = calculateLineItemPrice(li);
-			currentPR.setTotal(currentPR.getTotal() + liTotal);
-			Console.printToConsole("\nLine item price: " + formatCurrency(liTotal) + "; PR subtotal: " + formatCurrency(currentPR.getTotal()));
-			Console.printToConsole("");
-			
-			choice = Console.getString("Enter line item? (y/n):\t","y","n");	
-		}	
-		success = preqDB.insertPurchRequestLI(lineItemAL); //Insert all line items at one time 
+		success = createPurchRequest();	
 		if (success) {
-			Console.printToConsole("Line items successfully inserted.\n");
-			autoApproveUpTo50();
+			Console.printToConsole("Successful insert of purchase request header ("+ currentPR.getId() + ").\n");
+			displayProductList();
+			String choice = Console.getString("\nEnter line item? (y/n):\t","y","n");	
+			boolean liSuccess = false;
+			ArrayList<PurchaseRequestLineItem> lineItemAL = new ArrayList<>();
+			while (choice.equalsIgnoreCase("y")) {			
+				int productID = Console.getInt("Enter product nbr from product list:\t", 1, prodDB.getProducts().size());
+				int qty = Console.getInt("Enter quantity:\t");  			
+				PurchaseRequestLineItem li = new PurchaseRequestLineItem (); 				
+				li.setPurchaseRequestID(currentPR.getId());
+				li.setProductID(productID);
+				li.setQuantity(qty);
+				li.setupdatedByUser(currentUser.getId());
+				lineItemAL.add(li);
+				currentPR.setPrli(lineItemAL);
+				double liTotal = calculateLineItemPrice(li);
+				currentPR.setTotal(currentPR.getTotal() + liTotal);
+				Console.printToConsole("\nLine item price: " + formatCurrency(liTotal) + "; PR subtotal: " + formatCurrency(currentPR.getTotal()));
+				Console.printToConsole("");
+				
+				liSuccess = preqDB.insertPurchRequestLISingle(li);
+				boolean updSuccess = false;
+				if (liSuccess) {
+					updSuccess = preqDB.updatePRTotal(currentPR);
+					if (!updSuccess) {
+						Console.printToConsole("PR total update failed.\n");
+						break;
+					} else {
+						Console.printToConsole("PR total update successful.\n");
+					}
+				}
+				
+				choice = Console.getString("Enter line item? (y/n):\t","y","n");	
+			}	
+//			liSuccess = preqDB.insertPurchRequestLI(lineItemAL); //Insert all line items at one time 
+//			if (liSuccess) {
+//				Console.printToConsole("\nLine items successfully inserted.\n");
+//				autoApproveUpTo50();
+//			} else {
+//				Console.printToConsole("Error inserting line items.\n");
+//			}
 		} else {
-			Console.printToConsole("Error inserting line items.\n");
+			Console.printToConsole("Purchase request insert failed.");
 		}
 	}
 	
@@ -256,13 +272,14 @@ public class PRSConsole {
 		//PROMPT TO EDIT PR HDR
 		//LET USER EDIT LI THAT UPDATES TOTAL
 		//Add vendor - set up in jpa and join w product
+		//Update status to remove the jpql and simply call status like userDB gets all users
 		
 		currentPR = new PurchaseRequest(currentUser, description, justification, tsd, deliveryMode, newStatus, 0.0);
 		
 		String strg = "Purchase Request Header Review\n" +  
 	                   "==============================\n" +
 	                   "Purchaser Request ID:\t\t\n" +  
-				       "User:\t\t\t\t" + currentUser.getFirstName() + " " + currentUser.getLastName() + "\n" +
+			           "User:\t\t\t\t" + currentPR.getUser().getFirstName() + " " + currentPR.getUser().getLastName() + "\n" +	                   
 				       "Description:\t\t\t" + currentPR.getDescription() + "\n" +
 				       "Justification:\t\t\t" + currentPR.getJustification() + "\n" + 
 	 			       "Date Needed:\t\t\t" +  currentPR.getDateNeeded() + "\n" + 
@@ -276,8 +293,7 @@ public class PRSConsole {
 		if (choice.equalsIgnoreCase("submit")) {
 			updatePR();
 			isPRCreated = preqDB.insertPurchRequest(currentPR);
-//			System.out.println("After insert hdr after updatePR: " + currentPR);
-			Console.printToConsole("Purchase request header submitted\n"); 				
+//			Console.printToConsole("Purchase request header submitted.\n"); 				
 		} else {
 			Console.printToConsole("Purchase request header cancelled\n"); 				
 		}
@@ -315,7 +331,7 @@ public class PRSConsole {
 		for (PurchaseRequest pr : preqDB.getMyPurchaseRequests(currentUser)){
 			
 			s += "Purchase Request ID:\t" + pr.getId() + "\n" +
-		         "  User:\t\t\t" + currentUser.getFirstName() + " " + currentUser.getLastName() + "\n" +
+		         "  User:\t\t\t\t" + pr.getUser().getFirstName() + " " + pr.getUser().getLastName() + "\n" +					
 				 "  Description:\t\t" + pr.getDescription() + "\n" +
 		         "  Justification:\t" + pr.getJustification() + "\n" +
 				 "  Date Needed:\t\t" +  pr.getDateNeeded() + "\n" +

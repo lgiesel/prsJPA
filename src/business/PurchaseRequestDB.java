@@ -86,7 +86,25 @@ public class PurchaseRequestDB {
 		return success;		
 	}
 	
-	public boolean updatePR(PurchaseRequest pr) {
+	public boolean insertPurchRequestLISingle(PurchaseRequestLineItem prlI) {
+		boolean success = false;		
+		EntityManager em = DBUtil.getEmFactory().createEntityManager();
+		EntityTransaction trans = em.getTransaction();
+		try {
+			trans.begin();
+			em.persist(prlI);
+			trans.commit();
+			success = true;			
+		} catch (Exception e) {
+			System.out.println("Insert PR line item error: " + e);
+			trans.rollback();
+		} finally {
+			em.close();
+		}	
+		return success;		
+	}
+	
+	public boolean updatePRTotal(PurchaseRequest pr) {
 		boolean success = false;
 		EntityManager em = DBUtil.getEmFactory().createEntityManager();
 		EntityTransaction trans = em.getTransaction();
